@@ -50,6 +50,23 @@ class PoseNetFeat(nn.Module):
 
         self.ap1 = torch.nn.AvgPool1d(num_points)
         self.num_points = num_points
+
+    def globalFeature(self, x, emb):
+        x = F.relu(self.conv1(x))
+        emb = F.relu(self.e_conv1(emb))
+
+        x = F.relu(self.conv2(x))
+        emb = F.relu(self.e_conv2(emb))
+        pointfeat_2 = torch.cat((x, emb), dim=1)
+
+        x = F.relu(self.conv5(pointfeat_2))
+        x = F.relu(self.conv6(x))
+
+        ap_x = self.ap1(x)
+
+        ap_x = ap_x.view(-1, 1024)
+        return ap_x #1024
+
     def forward(self, x, emb):
         x = F.relu(self.conv1(x))
         emb = F.relu(self.e_conv1(emb))
@@ -66,6 +83,7 @@ class PoseNetFeat(nn.Module):
 
         ap_x = ap_x.view(-1, 1024, 1).repeat(1, 1, self.num_points)
         return torch.cat([pointfeat_1, pointfeat_2, ap_x], 1) #128 + 256 + 1024
+
 
 class PoseNet(nn.Module):
     def __init__(self, num_points, num_obj):
@@ -91,6 +109,19 @@ class PoseNet(nn.Module):
         self.conv4_c = torch.nn.Conv1d(128, num_obj*1, 1) #confidence
 
         self.num_obj = num_obj
+
+    def globalFeature(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x = self.feat.globalFeature(x, emb)
+        return ap_x
 
     def forward(self, img, x, choose, obj):
         out_img = self.cnn(img)
@@ -131,6 +162,74 @@ class PoseNet(nn.Module):
         
         return out_rx, out_tx, out_cx, emb.detach()
  
+class PoseNetGlobal(nn.Module):
+    def __init__(self, num_points, num_obj):
+        super(PoseNetGlobal, self).__init__()
+        self.num_points = num_points
+        self.cnn = ModifiedResnet()
+        self.feat = PoseNetFeat(num_points)
+        
+        self.conv1_r = torch.nn.Conv1d(1024, 640, 1)
+        self.conv1_t = torch.nn.Conv1d(1024, 640, 1)
+        self.conv1_c = torch.nn.Conv1d(1024, 640, 1)
+
+        self.conv2_r = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_t = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_c = torch.nn.Conv1d(640, 256, 1)
+
+        self.conv3_r = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_t = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_c = torch.nn.Conv1d(256, 128, 1)
+
+        self.conv4_r = torch.nn.Conv1d(128, num_obj*4, 1) #quaternion
+        self.conv4_t = torch.nn.Conv1d(128, num_obj*3, 1) #translation
+        self.conv4_c = torch.nn.Conv1d(128, num_obj*1, 1) #confidence
+
+        self.num_obj = num_obj
+
+    def globalFeature(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x = self.feat.globalFeature(x, emb)
+        return ap_x, emb
+
+    def forward(self, img, x, choose, obj):
+        bs, _, _, _ = img.size()
+        ap_x, emb = self.globalFeature(img, x, choose, obj) 
+        ap_x = ap_x.view(-1, 1024, 1).repeat(1, 1, 1)
+        rx = F.relu(self.conv1_r(ap_x))
+        tx = F.relu(self.conv1_t(ap_x))
+        cx = F.relu(self.conv1_c(ap_x)) 
+
+        rx = F.relu(self.conv2_r(rx))
+        tx = F.relu(self.conv2_t(tx))
+        cx = F.relu(self.conv2_c(cx))
+
+        rx = F.relu(self.conv3_r(rx))
+        tx = F.relu(self.conv3_t(tx))
+        cx = F.relu(self.conv3_c(cx))
+
+        rx = self.conv4_r(rx).view(bs, self.num_obj, 4, 1)
+        tx = self.conv4_t(tx).view(bs, self.num_obj, 3, 1)
+        cx = torch.sigmoid(self.conv4_c(cx)).view(bs, self.num_obj, 1, 1)
+        
+        b = 0
+        out_rx = torch.index_select(rx[b], 0, obj[b])
+        out_tx = torch.index_select(tx[b], 0, obj[b])
+        out_cx = torch.index_select(cx[b], 0, obj[b])
+        
+        out_rx = out_rx.contiguous().transpose(2, 1).contiguous()
+        out_cx = out_cx.contiguous().transpose(2, 1).contiguous()
+        out_tx = out_tx.contiguous().transpose(2, 1).contiguous()
+        
+        return out_rx, out_tx, out_cx, emb.detach()
 
 
 class PoseRefineNetFeat(nn.Module):

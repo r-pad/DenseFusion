@@ -124,7 +124,7 @@ def subRandomSigmaSearchMax(estimator, dataset_root, file_list,
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
             w = torch.stack(w)
-            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))[0]
+            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))
             n += len(v)
         mean_likelihood /= n
         print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))
@@ -145,15 +145,15 @@ def subRandomSigmaSearchEvery(estimator, dataset_root, file_list,
     sigmas = subrandom(num_samples)*(sigma_lims[1]-sigma_lims[0]) + sigma_lims[0]
     mean_likelihoods = []
     for j, sigma in enumerate(sigmas):
-        eval_func = partial(evaluateYCBEvery, estimator, sigma=sigma)
+        eval_func = partial(evaluateYCBEvery, estimator, sigma=sigma, return_exponent=True)
         likelihoods = evaluateYCBDataset(eval_func, dataset_root, file_list, 20)
         mean_likelihood = 0
         n = 0
         for v in likelihoods.values():
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
-            w = torch.stack(w)
-            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))[0]
+            w = torch.stack(w).squeeze()
+            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))
             n += len(v)
         mean_likelihood /= n
         print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))

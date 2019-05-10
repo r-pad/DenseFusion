@@ -153,8 +153,8 @@ class DenseFusionEstimator(object):
         return max_r, max_t
 
     def globalFeature(self, img_masked, cloud, choose, object_label):
-        _, _, _, emb = self.estimator(img_masked, cloud, choose, object_label)
-        return emb
+        feat = self.estimator.globalFeature(img_masked, cloud, choose, object_label)
+        return feat
 
     def estimatePose(self, img_masked, cloud, choose, object_label, return_all=True):
         pred_r, pred_t, pred_c, emb = self.estimator(img_masked, cloud, choose, object_label)
