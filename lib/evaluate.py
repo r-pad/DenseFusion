@@ -120,7 +120,11 @@ class DenseFusionEstimator(object):
         self.estimator = PoseNet(num_points = num_points, num_obj = num_obj)
         if(torch.cuda.is_available()):
             self.estimator.cuda()
-        self.estimator.load_state_dict(torch.load(estimator_weights_file))
+            self.estimator.load_state_dict(torch.load(estimator_weights_file))
+        else:
+            self.estimator.load_state_dict(torch.load(estimator_weights_file, 
+                                                      map_location=lambda storage, loc: storage))
+
         self.estimator.eval()
 
         if(refiner_weights_file is not None):
