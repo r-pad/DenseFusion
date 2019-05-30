@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -104,3 +103,12 @@ venv.bak/
 .mypy_cache/
 
 *.swp
+
+
+*/__pycache__
+experiments/logs/
+trained_checkpoints/
+trained_models/
+datasets/ycb/YCB_Video_Dataset
+*.npz
+*.pyc
