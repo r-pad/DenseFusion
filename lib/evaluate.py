@@ -9,8 +9,8 @@ import numpy.ma as ma
 import torch
 import torchvision.transforms as transforms
 from torch.autograd import Variable
-from lib.network import PoseNet, PoseRefineNet
-from lib.transformations import quaternion_matrix, quaternion_from_matrix
+from .network import PoseNet, PoseRefineNet
+from .transformations import quaternion_matrix, quaternion_from_matrix
 
 norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 border_list = [-1, 40, 80, 120, 160, 200, 240, 280, 320, 360, 400, 440, 480, 520, 560, 600, 640, 680]
