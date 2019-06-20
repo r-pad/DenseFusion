@@ -231,6 +231,66 @@ class PoseNetGlobal(nn.Module):
         
         return out_rx, out_tx, out_cx, emb.detach()
 
+class PoseNetBingham(nn.Module):
+    def __init__(self, num_points, num_obj):
+        super(PoseNetBingham, self).__init__()
+        self.num_points = num_points
+        self.cnn = ModifiedResnet()
+        self.feat = PoseNetFeat(num_points)
+        
+        self.conv1_mean = torch.nn.Conv1d(1024, 640, 1)
+        self.conv1_sigma = torch.nn.Conv1d(1024, 640, 1)
+
+        self.conv2_mean = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_sigma = torch.nn.Conv1d(640, 256, 1)
+
+        self.conv3_mean = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_sigma = torch.nn.Conv1d(256, 128, 1)
+
+        self.conv4_mean = torch.nn.Conv1d(128, num_obj*4, 1) #quaternion
+        self.conv4_sigma = torch.nn.Conv1d(128, num_obj*3, 1) #translation
+
+        self.num_obj = num_obj
+
+    def globalFeature(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x = self.feat.globalFeature(x, emb)
+        return ap_x, emb
+
+    def forward(self, img, x, choose, obj):
+        bs, _, _, _ = img.size()
+        ap_x, emb = self.globalFeature(img, x, choose, obj) 
+        ap_x = ap_x.view(-1, 1024, 1).repeat(1, 1, 1)
+        meanx = F.relu(self.conv1_mean(ap_x))
+        sigmax = F.relu(self.conv1_sigma(ap_x))
+
+        meanx = F.relu(self.conv2_mean(meanx))
+        sigmax = F.relu(self.conv2_sigma(sigmax))
+
+        meanx = F.relu(self.conv3_mean(meanx))
+        sigmax = F.relu(self.conv3_sigma(sigmax))
+
+        meanx = self.conv4_mean(meanx).view(bs, self.num_obj, 4, 1)
+        sigmax = self.conv4_sigma(sigmax).view(bs, self.num_obj, 3, 1)
+        
+        b = 0
+        out_meanx = torch.index_select(meanx[b], 0, obj[b])
+        out_sigmax = torch.index_select(sigmax[b], 0, obj[b])
+        
+        out_meanx = out_meanx.contiguous().transpose(2, 1).contiguous()
+        out_sigmax = out_sigmax.contiguous().transpose(2, 1).contiguous()
+        
+        return out_meanx, out_sigmax, emb.detach()
+
+
 
 class PoseRefineNetFeat(nn.Module):
     def __init__(self, num_points):
