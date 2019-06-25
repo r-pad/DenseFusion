@@ -8,9 +8,9 @@ import random
 import torch.backends.cudnn as cudnn
 from lib.knn.__init__ import KNearestNeighbor
 
-knn = KNearestNeighbor(1)
 
 def loss_calculation(pred_r, pred_t, pred_c, target, model_points, idx, points, w, refine, num_point_mesh, sym_list):
+    knn = KNearestNeighbor(1)
     bs, num_p, _ = pred_c.size()
     _, num_points, _ = points.size()
 
@@ -56,7 +56,7 @@ def loss_calculation(pred_r, pred_t, pred_c, target, model_points, idx, points, 
     dis = dis.view(bs, num_p)
 
     ###### Ask about how the global pose is estimated.
-    t = ori_t[which_max[0]] + torch.mean(points, dim=1)#+ points[which_max[0]]
+    t = ori_t[which_max[0]]# + torch.mean(points, dim=1)#+ points[which_max[0]]
     #points = points.view(1, bs * num_p, 3)
 
     ori_base = ori_base[which_max[0]].view(1, 3, 3).contiguous()
@@ -68,7 +68,7 @@ def loss_calculation(pred_r, pred_t, pred_c, target, model_points, idx, points, 
     new_target = torch.bmm((new_target - ori_t), ori_base).contiguous()
 
     # print('------------> ', dis[0][which_max[0]].item(), pred_c[0][which_max[0]].item(), idx[0].item())
-
+    del knn
     return loss, dis[0][which_max[0]], new_points.detach(), new_target.detach()
 
 

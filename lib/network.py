@@ -67,6 +67,25 @@ class PoseNetFeat(nn.Module):
         ap_x = ap_x.view(-1, 1024)
         return ap_x #1024
 
+    def allFeatures(self, x, emb):
+        x = F.relu(self.conv1(x))
+        emb = F.relu(self.e_conv1(emb))
+        pointfeat_1 = torch.cat((x, emb), dim=1)
+
+        x = F.relu(self.conv2(x))
+        emb = F.relu(self.e_conv2(emb))
+        pointfeat_2 = torch.cat((x, emb), dim=1)
+
+        x = F.relu(self.conv5(pointfeat_2))
+        x = F.relu(self.conv6(x))
+
+        ap_x = self.ap1(x)
+
+        ap_x_global = ap_x.view(-1, 1024)
+        ap_x = ap_x.view(-1, 1024, 1).repeat(1, 1, self.num_points)
+        return torch.cat([pointfeat_1, pointfeat_2, ap_x], 1), ap_x_global #128 + 256 + 1024
+
+
     def forward(self, x, emb):
         x = F.relu(self.conv1(x))
         emb = F.relu(self.e_conv1(emb))
@@ -121,7 +140,59 @@ class PoseNet(nn.Module):
         
         x = x.transpose(2, 1).contiguous()
         ap_x = self.feat.globalFeature(x, emb)
-        return ap_x
+        return ap_x.detach()
+
+    def localFeatures(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x, ap_x_global = self.feat.allFeatures(x, emb)
+        return ap_x, ap_x_global
+
+    def allFeatures(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x, ap_x_global = self.feat.allFeatures(x, emb)
+
+        rx = F.relu(self.conv1_r(ap_x))
+        tx = F.relu(self.conv1_t(ap_x))
+        cx = F.relu(self.conv1_c(ap_x))      
+
+        rx = F.relu(self.conv2_r(rx))
+        tx = F.relu(self.conv2_t(tx))
+        cx = F.relu(self.conv2_c(cx))
+
+        rx = F.relu(self.conv3_r(rx))
+        tx = F.relu(self.conv3_t(tx))
+        cx = F.relu(self.conv3_c(cx))
+
+        rx = self.conv4_r(rx).view(bs, self.num_obj, 4, self.num_points)
+        tx = self.conv4_t(tx).view(bs, self.num_obj, 3, self.num_points)
+        cx = torch.sigmoid(self.conv4_c(cx)).view(bs, self.num_obj, 1, self.num_points)
+        
+        b = 0
+        out_rx = torch.index_select(rx[b], 0, obj[b])
+        out_tx = torch.index_select(tx[b], 0, obj[b])
+        out_cx = torch.index_select(cx[b], 0, obj[b])
+        
+        out_rx = out_rx.contiguous().transpose(2, 1).contiguous()
+        out_cx = out_cx.contiguous().transpose(2, 1).contiguous()
+        out_tx = out_tx.contiguous().transpose(2, 1).contiguous()
+        
+        return out_rx, out_tx, out_cx, emb.detach(), ap_x.detach(), ap_x_global.detach() 
 
     def forward(self, img, x, choose, obj):
         out_img = self.cnn(img)
@@ -187,7 +258,7 @@ class PoseNetGlobal(nn.Module):
 
         self.num_obj = num_obj
 
-    def globalFeature(self, img, x, choose, obj):
+    def globalFeature(self, img, x, choose, obj, return_emb = False):
         out_img = self.cnn(img)
         
         bs, di, _, _ = out_img.size()
@@ -198,11 +269,13 @@ class PoseNetGlobal(nn.Module):
         
         x = x.transpose(2, 1).contiguous()
         ap_x = self.feat.globalFeature(x, emb)
-        return ap_x, emb
+        if(return_emb):
+            return ap_x, emb
+        return ap_x.detach()
 
     def forward(self, img, x, choose, obj):
         bs, _, _, _ = img.size()
-        ap_x, emb = self.globalFeature(img, x, choose, obj) 
+        ap_x, emb = self.globalFeature(img, x, choose, obj, return_emb = True) 
         ap_x = ap_x.view(-1, 1024, 1).repeat(1, 1, 1)
         rx = F.relu(self.conv1_r(ap_x))
         tx = F.relu(self.conv1_t(ap_x))
