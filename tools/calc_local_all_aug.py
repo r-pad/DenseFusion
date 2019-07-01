@@ -154,9 +154,14 @@ def main():
                     how_max, which_max = torch.max(pred_c, 1)
                     max_feat = feat[0,:,which_max[0]].view(-1)
 
-                    np.savez(output_filename, quat = to_np(quat)[0], feat = to_np(max_feat),
-                             feat_all = to_np(feat)[0].T, feat_global = to_np(feat_global)[0], 
-                             confidence = to_np(pred_c)[0])
+                    np.savez(output_filename, 
+                             quat = to_np(quat)[0], 
+                             feat = to_np(max_feat),
+                             #feat_all = to_np(feat)[0].T, i
+                             feat_global = to_np(feat_global)[0], 
+                             #max_confidence = to_np(how_max),
+                             #confidence = to_np(pred_c)[0],
+                             )
                     
                
 if __name__ == '__main__':

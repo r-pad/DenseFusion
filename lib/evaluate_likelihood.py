@@ -109,60 +109,57 @@ def evaluateYCBDataset(eval_func, dataset_root, file_list, skip=0):
         return likelihoods
 
 def subRandomSigmaSearchMax(estimator, dataset_root, file_list, 
-                            sigma_lims = [0, 2*np.pi], 
+                            sigma_lims = [0, 20], 
                             num_samples = 100):
-    max_likelihood = -np.inf
-    max_sigma = None
+    max_likelihood = {obj:-np.inf for obj in range(1,22)}
+    max_sigma = {obj:None for obj in range(1,22)}
     sigmas = subrandom(num_samples)*(sigma_lims[1]-sigma_lims[0]) + sigma_lims[0]
     mean_likelihoods = []
     for j, sigma in enumerate(sigmas):
         eval_func = partial(evaluateYCBMax, estimator, sigma=sigma, return_exponent=True)
-        likelihoods = evaluateYCBDataset(eval_func, dataset_root, file_list, 20)
-        mean_likelihood = 0
-        n = 0
-        for v in likelihoods.values():
+        likelihoods = evaluateYCBDataset(eval_func, dataset_root, file_list, 7)
+        mean_likelihood = {obj:0 for obj in range(1,22)}
+        for k,v in likelihoods.items():
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
             w = torch.stack(w)
-            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))
-            n += len(v)
-        mean_likelihood /= n
+            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, binghamNormC(sigma))))
+        
         print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))
         mean_likelihoods.append(mean_likelihood)
-        if(mean_likelihood > max_likelihood):
-            max_likelihood = mean_likelihood
-            max_sigma = sigma
-            print("Max Sigma after {} samples: {} ({})".format(j+1, sigma, max_likelihood))
-            np.savez('single_max.npz', likelihoods = likelihoods, sigma = max_sigma)
+        for k,v in mean_likelihood.items():
+            if(v > max_likelihood[k]):
+                max_likelihood[k] = v
+                max_sigma[k] = sigma
+                print("Max Sigma for object {} after {} samples: {} ({})".format(k, j+1, sigma, max_likelihood[k]))
+                np.savez('single_max_obj_{}.npz'.format(k), likelihoods = likelihoods[k], sigma = sigma)
 
-    np.savez('single_max_sigmas.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
+    np.savez('single_max_sigmas_indv.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
 
 def subRandomSigmaSearchEvery(estimator, dataset_root, file_list, 
-                              sigma_lims = [0, 100], 
+                              sigma_lims = [0, 20], 
                               num_samples = 100):
-    max_likelihood = -np.inf
-    max_sigma = None
+    max_likelihood = {obj:-np.inf for obj in range(1,22)}
+    max_sigma = {obj:None for obj in range(1,22)}
+    
     sigmas = subrandom(num_samples)*(sigma_lims[1]-sigma_lims[0]) + sigma_lims[0]
     mean_likelihoods = []
     for j, sigma in enumerate(sigmas):
         eval_func = partial(evaluateYCBEvery, estimator, sigma=sigma, return_exponent=True)
-        likelihoods = evaluateYCBDataset(eval_func, dataset_root, file_list, 20)
-        mean_likelihood = 0
-        n = 0
-        for v in likelihoods.values():
+        likelihoods = evaluateYCBDataset(eval_func, dataset_root, file_list, 7)
+        mean_likelihood = {obj:0 for obj in range(1,22)}
+        for k, v in likelihoods.items():
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
             w = torch.stack(w).squeeze()
-            mean_likelihood += to_np(torch.sum(logSumExp(l_exp, w, binghamNormC(sigma))))
-            n += len(v)
-        mean_likelihood /= n
-        print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))
-        mean_likelihoods.append(mean_likelihood)
-        if(mean_likelihood > max_likelihood):
-            max_likelihood = mean_likelihood
-            max_sigma = sigma
-            print("Max Sigma after {} samples: {} ({})".format(j+1, sigma, max_likelihood))
-            np.savez('bingham_every.npz', likelihoods = likelihoods, sigma = max_sigma)
+            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, binghamNormC(sigma))))
+        
+        for k,v in mean_likelihood.items():
+            if(v > max_likelihood[k]):
+                max_likelihood[k] = v
+                max_sigma[k] = sigma
+                print("Max Sigma for object {} after {} samples: {} ({})".format(k, j+1, sigma, max_likelihood[k]))
+                np.savez('bingham_every_obj_{}.npz'.format(k), likelihoods = likelihoods[k], sigma = sigma)
 
-    np.savez('bingham_every_sigmas.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
+    np.savez('bingham_every_sigmas_indv.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
 

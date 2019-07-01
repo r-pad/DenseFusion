@@ -21,7 +21,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 from torch.autograd import Variable
 from lib.network import PoseNetBingham
-from lib.loss_bing import Loss
+from lib.loss_bing import IsoLoss
 from lib.utils import setup_logger
 from object_pose_utils.datasets.pose_dataset import OutputTypes as otypes
 from object_pose_utils.datasets.ycb_dataset import YcbDataset as YCBDataset
@@ -29,7 +29,8 @@ from object_pose_utils.datasets.image_processing import ColorJitter, ImageNormal
 from object_pose_utils.datasets.point_processing import PointShifter
 from object_pose_utils.datasets.inplane_rotation_augmentation import InplaneRotator
 from object_pose_utils.datasets.ycb_occlusion_augmentation import YCBOcclusionAugmentor
-
+from object_pose_utils.utils.pose_processing import tensorAngularDiff
+from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_root', type=str, default = '', help='dataset root dir (''YCB_Video_Dataset'' or ''Linemod_preprocessed'')')
@@ -60,6 +61,10 @@ def main():
     opt.repeat_epoch = 1 #number of repeat times for one epoch training
     estimator = PoseNetBingham(num_points = opt.num_points, num_obj = opt.num_objects)
     estimator.cuda()
+
+    train_writer = SummaryWriter(comment='binham_train')
+    valid_writer = SummaryWriter(comment='binham_valid')
+
 
     if opt.resume_posenet != '':
         estimator.load_state_dict(torch.load('{0}/{1}'.format(opt.outf, opt.resume_posenet)))
@@ -99,7 +104,7 @@ def main():
 
     print('>>>>>>>>----------Dataset loaded!---------<<<<<<<<\nlength of the training set: {0}\nlength of the testing set: {1}\nnumber of sample points on mesh: {2}\nsymmetry object list: {3}'.format(len(dataset), len(test_dataset), opt.num_points_mesh, opt.sym_list))
 
-    criterion = Loss(opt.num_points_mesh, opt.sym_list)
+    criterion = IsoLoss(opt.num_points_mesh, opt.sym_list)
 
     best_test = np.Inf
 
@@ -107,7 +112,9 @@ def main():
         for log in os.listdir(opt.log_dir):
             os.remove(os.path.join(opt.log_dir, log))
     st_time = time.time()
-
+    cum_batch_count = 0
+    mean_sig = 0
+    mean_err = 0
     for epoch in range(opt.start_epoch, opt.nepoch):
         logger = setup_logger('epoch%d' % epoch, os.path.join(opt.log_dir, 'epoch_%d_log.txt' % epoch))
         logger.info('Train time {0}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)) + ', ' + 'Training started'))
@@ -126,18 +133,30 @@ def main():
                                                                  Variable(target).cuda(), \
                                                                  Variable(idx).cuda()
                 pred_mean, pred_sigma, _ = estimator(img, points, choose, idx)
-                loss, dis = criterion(pred_mean, pred_sigma[:,:,0], target)
+                loss, dis = criterion(pred_mean.view(-1), -torch.exp(pred_sigma[:,:,0].view(-1)), target)
+                mean_sig += -torch.exp(pred_sigma[:,:,0].view(-1)).detach()
+                pred_q = pred_mean.view(-1).detach()
+                pred_q = pred_q /pred_q.norm()
+                mean_err += tensorAngularDiff(pred_q, target)*180/np.pi
                 loss.backward()
 
                 train_dis_avg += dis.item()
                 train_count += 1
 
                 if train_count % opt.batch_size == 0:
+                    cum_batch_count += 1
                     logger.info('Train time {0} Epoch {1} Batch {2} Frame {3} Avg_dis:{4}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), epoch, int(train_count / opt.batch_size), train_count, train_dis_avg / opt.batch_size))
                     optimizer.step()
                     optimizer.zero_grad()
                     train_dis_avg = 0
-
+                    if(cum_batch_count % 100 == 0):
+                        train_writer.add_scalar('loss', loss, cum_batch_count)
+                        train_writer.add_scalar('lik', dis, cum_batch_count)
+                        train_writer.add_scalar('mean_lik', train_dis_avg / opt.batch_size, cum_batch_count)
+                        train_writer.add_scalar('mean_sig', mean_sig/(100*opt.batch_size), cum_batch_count)
+                        train_writer.add_scalar('mean_err', mean_err/(100*opt.batch_size), cum_batch_count)
+                        mean_sig = 0
+                        mean_err = 0
                 if train_count != 0 and train_count % 1000 == 0:
                     torch.save(estimator.state_dict(), '{0}/pose_model_current.pth'.format(opt.outf))
 
@@ -149,7 +168,8 @@ def main():
         test_dis = 0.0
         test_count = 0
         estimator.eval()
-
+        mean_sig = 0
+        mean_err = 0
         for j, data in enumerate(testdataloader, 0):
             points, choose, img, target, idx = data
             idx = idx - 1
@@ -159,15 +179,25 @@ def main():
                                                              Variable(target).cuda(), \
                                                              Variable(idx).cuda()
             pred_mean, pred_sigma, _ = estimator(img, points, choose, idx)
-            _, dis = criterion(pred_mean, pred_sigma[:,:,0], target)
+            loss, dis = criterion(pred_mean.view(-1), -torch.exp(pred_sigma[:,:,0].view(-1)), target)
+            mean_sig += -torch.exp(pred_sigma[:,:,0].view(-1)).detach()
+            pred_q = pred_mean.view(-1).detach()
+            pred_q = pred_q /pred_q.norm()
+            mean_err += tensorAngularDiff(pred_q, target)*180/np.pi
 
             test_dis += dis.item()
             logger.info('Test time {0} Test Frame No.{1} dis:{2}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), test_count, dis))
-
-            test_count += 1
+        test_count += 1
 
         test_dis = test_dis / test_count
         logger.info('Test time {0} Epoch {1} TEST FINISH Avg dis: {2}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), epoch, test_dis))
+        valid_writer.add_scalar('loss', loss, cum_batch_count)
+        valid_writer.add_scalar('lik', dis, cum_batch_count)
+        valid_writer.add_scalar('mean_lik', test_dis, cum_batch_count)
+        valid_writer.add_scalar('mean_sig', mean_sig/test_count, cum_batch_count)
+        valid_writer.add_scalar('mean_err', mean_err/test_count, cum_batch_count)
+        mean_sig = 0
+        mean_err = 0
         if test_dis <= best_test:
             best_test = test_dis
             if opt.refine_start:
