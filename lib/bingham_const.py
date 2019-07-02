@@ -25,7 +25,9 @@ class BinghamConst(torch.autograd.Function):
         #z_i = np.argsort(Z)
         #dF = np.array(bingham_dF(Z[z_i]))
         #dF[z_i] = dF
-
+        if(np.any(np.isnan(dF))):
+            print('BinghamConst: Gradient NaN')
+            dF = np.zeros_like(dF)
         grad_input = grad_output.clone() * torch.as_tensor(dF, dtype=grad_output.dtype) 
         if(torch.cuda.is_available()):
             grad_input = grad_input.cuda()

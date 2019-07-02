@@ -133,8 +133,8 @@ def main():
                                                                  Variable(target).cuda(), \
                                                                  Variable(idx).cuda()
                 pred_mean, pred_sigma, _ = estimator(img, points, choose, idx)
-                loss, dis = criterion(pred_mean.view(-1), -torch.exp(pred_sigma[:,:,0].view(-1)), target)
-                mean_sig += -torch.exp(pred_sigma[:,:,0].view(-1)).detach()
+                loss, dis = criterion(pred_mean.view(-1), torch.abs(pred_sigma[:,:,0].view(-1)), target)
+                mean_sig += torch.abs(pred_sigma[:,:,0].view(-1)).detach()
                 pred_q = pred_mean.view(-1).detach()
                 pred_q = pred_q /pred_q.norm()
                 mean_err += tensorAngularDiff(pred_q, target)*180/np.pi
@@ -179,8 +179,8 @@ def main():
                                                              Variable(target).cuda(), \
                                                              Variable(idx).cuda()
             pred_mean, pred_sigma, _ = estimator(img, points, choose, idx)
-            loss, dis = criterion(pred_mean.view(-1), -torch.exp(pred_sigma[:,:,0].view(-1)), target)
-            mean_sig += -torch.exp(pred_sigma[:,:,0].view(-1)).detach()
+            loss, dis = criterion(pred_mean.view(-1), torch.abs(pred_sigma[:,:,0].view(-1)), target)
+            mean_sig += torch.abs(pred_sigma[:,:,0].view(-1)).detach()
             pred_q = pred_mean.view(-1).detach()
             pred_q = pred_q /pred_q.norm()
             mean_err += tensorAngularDiff(pred_q, target)*180/np.pi
