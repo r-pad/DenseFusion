@@ -8,7 +8,10 @@ import torch
 from functools import partial
 
 from object_pose_utils.utils import to_np
-from object_pose_utils.utils.interpolation import BinghamInterpolation, binghamNormC
+
+from object_pose_utils.utils.interpolation import BinghamInterpolation
+from object_pose_utils.utils.bingham import bingham_const
+
 from object_pose_utils.utils.subrandom import subrandom
 from dense_fusion.data_processing import preprocessPoseCNNMetaData, getYCBGroundtruth
 
@@ -31,7 +34,7 @@ def evaluateYCBMax(estimator, data_prefix, sigma, return_exponent = False):
         mask, bbox, object_label = preprocessPoseCNNMetaData(posecnn_meta, obj_idx)
         q_est, t_est = estimator(img, depth, mask, bbox, object_label)
         q_est = q_est[[1,2,3,0]]
-    
+        q_est /= q_est.norm()
         bingham_interp = BinghamInterpolation(vertices = [to_np(q_est)], 
                                              values = torch.Tensor([1]), 
                                              sigma=sigma)
@@ -59,6 +62,7 @@ def evaluateYCBEvery(estimator, data_prefix, sigma, return_exponent = False):
         mask, bbox, object_label = preprocessPoseCNNMetaData(posecnn_meta, obj_idx)
         pred_r, _, pred_c = estimator(img, depth, mask, bbox, object_label, return_all = True)[3:6]
         pred_r = pred_r[0,:,[1,2,3,0]]
+        pred_r /= torch.norm(pred_r, dim=1).view(-1,1)
         bingham_interp = BinghamInterpolation(vertices = to_np(pred_r.detach()), 
                                               values = pred_c.detach(), 
                                               sigma = sigma)
@@ -123,7 +127,7 @@ def subRandomSigmaSearchMax(estimator, dataset_root, file_list,
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
             w = torch.stack(w)
-            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, binghamNormC(sigma))))
+            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, bingham_const(-torch.tensor(sigma).repeat(3)).float()/2)))
         
         print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))
         mean_likelihoods.append(mean_likelihood)
@@ -134,7 +138,7 @@ def subRandomSigmaSearchMax(estimator, dataset_root, file_list,
                 print("Max Sigma for object {} after {} samples: {} ({})".format(k, j+1, sigma, max_likelihood[k]))
                 np.savez('single_max_obj_{}.npz'.format(k), likelihoods = likelihoods[k], sigma = sigma)
 
-    np.savez('single_max_sigmas_indv.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
+    np.savez('single_max_sigmas_indv.npz', mean_likelihoods = mean_likelihoods, sigmas = sigmas)
 
 def subRandomSigmaSearchEvery(estimator, dataset_root, file_list, 
                               sigma_lims = [0, 20], 
@@ -152,8 +156,9 @@ def subRandomSigmaSearchEvery(estimator, dataset_root, file_list,
             l_exp, w = zip(*v)
             l_exp = torch.cat(l_exp)
             w = torch.stack(w).squeeze()
-            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, binghamNormC(sigma))))
-        
+            mean_likelihood[k] = to_np(torch.mean(logSumExp(l_exp, w, bingham_const(-torch.tensor(sigma).repeat(3)).float()/2)))
+        print("{}: Mean Log Likelihood of Sigma {}: {}".format(j, sigma, mean_likelihood))
+        mean_likelihoods.append(mean_likelihood)
         for k,v in mean_likelihood.items():
             if(v > max_likelihood[k]):
                 max_likelihood[k] = v
@@ -161,5 +166,5 @@ def subRandomSigmaSearchEvery(estimator, dataset_root, file_list,
                 print("Max Sigma for object {} after {} samples: {} ({})".format(k, j+1, sigma, max_likelihood[k]))
                 np.savez('bingham_every_obj_{}.npz'.format(k), likelihoods = likelihoods[k], sigma = sigma)
 
-    np.savez('bingham_every_sigmas_indv.npz', mean_likelihoods = np.array(mean_likelihoods), sigmas = sigmas)
+    np.savez('bingham_every_sigmas_indv.npz', mean_likelihoods = mean_likelihoods, sigmas = sigmas)
 

@@ -20,18 +20,18 @@ num_points = 1000
 num_obj = 21
 
 dataset_root = './datasets/ycb/YCB_Video_Dataset'
-model_checkpoint = 'trained_checkpoints/ycb/pose_model_26_0.012863246640872631.pth'
-refine_model_checkpoint = 'trained_checkpoints/ycb/pose_refine_model_69_0.009449292959118935.pth'
+#model_checkpoint = 'trained_checkpoints/ycb/pose_model_26_0.012863246640872631.pth'
+#refine_model_checkpoint = 'trained_checkpoints/ycb/pose_refine_model_69_0.009449292959118935.pth'
 valid_model_checkpoint = '../DenseFusionOld/DenseFusion/trained_models/ycb/pose_model_34_0.025648579025031315.pth'
 
-#dataset_config_dir = 'datasets/ycb/dataset_config'
-dataset_config_dir = '../DenseFusionOld/DenseFusion/datasets/ycb/dataset_config'
+dataset_config_dir = 'datasets/ycb/dataset_config'
+#dataset_config_dir = '../DenseFusionOld/DenseFusion/datasets/ycb/dataset_config'
 test_filenames = '{0}/test_data_list.txt'.format(dataset_config_dir)
 
 df_estimator = DenseFusionEstimator(num_points, num_obj, valid_model_checkpoint)
 
 subRandomSigmaSearchEvery(df_estimator, dataset_root, test_filenames, 
-                          sigma_lims = [0, 100],
+                          sigma_lims = [0, 30],
                           num_samples=100)
 
 
