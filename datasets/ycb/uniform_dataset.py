@@ -21,6 +21,11 @@ class PoseDataset(data.Dataset):
             self.path = 'datasets/ycb/dataset_config/train_data_list_w_renders.txt'
         elif mode == 'test':
             self.path = 'datasets/ycb/dataset_config/test_data_list.txt'
+        elif mode == 'orig_train':
+            self.path = 'datasets/ycb/dataset_config/orig_train_data_list_w_renders.txt'
+        elif mode == 'orig_test':
+            self.path = 'datasets/ycb/dataset_config/orig_test_data_list.txt'
+
         self.num_pt = num_pt
         self.root = root
         self.add_noise = add_noise
