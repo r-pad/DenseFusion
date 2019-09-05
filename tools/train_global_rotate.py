@@ -58,8 +58,8 @@ def main():
 
     opt.num_objects = 21 #number of object classes in the dataset
     opt.num_points = 1000 #number of points on the input pointcloud
-    opt.outf = 'trained_models/ycb_global' #folder to save trained models
-    opt.log_dir = 'experiments/logs/ycb_global' #folder to save logs
+    opt.outf = 'trained_models/ycb_global_rot' #folder to save trained models
+    opt.log_dir = 'experiments/logs/ycb_global_rot' #folder to save logs
     opt.repeat_epoch = 1 #number of repeat times for one epoch training
     estimator = PoseNetGlobal(num_points = opt.num_points, num_obj = opt.num_objects)
     estimator.cuda()
@@ -90,27 +90,31 @@ def main():
                      otypes.OBJECT_LABEL,
                      ]
 
-    dataset = YCBDataset(dataset_root, mode='train_syn_rend', 
+    dataset = YCBDataset(opt.dataset_root, mode='train_syn_grid', 
                          object_list = object_list, 
                          output_data = output_format,
-                         preprocessors = [YCBOcclusionAugmentor(dataset_root), ColorJitter(), InplaneRotator()],
+                         resample_on_error = True,
+                         preprocessors = [YCBOcclusionAugmentor(opt.dataset_root), 
+                                          ColorJitter(), 
+                                          InplaneRotator()],
                          postprocessors = [ImageNormalizer(), PointShifter()],
                          refine = opt.refine_start,
                          image_size = [640, 480], num_points=1000)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=opt.workers)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=opt.workers-1)
     
-    test_dataset = YCBDataset(dataset_root, mode='valid', 
+    test_dataset = YCBDataset(opt.dataset_root, mode='valid', 
                          object_list = object_list, 
                          output_data = output_format,
+                         resample_on_error = True,
                          preprocessors = [],
                          postprocessors = [ImageNormalizer()],
                          refine = opt.refine_start,
                          image_size = [640, 480], num_points=1000)
-    testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
+    testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=1)
     
 
-    opt.sym_list = dataset.get_sym_list()
-    opt.num_points_mesh = dataset.get_num_points_mesh()
+    opt.sym_list = [12, 15, 18, 19, 20]
+    opt.num_points_mesh = dataset.num_pt_mesh_small
 
     print('>>>>>>>>----------Dataset loaded!---------<<<<<<<<\nlength of the training set: {0}\nlength of the testing set: {1}\nnumber of sample points on mesh: {2}\nsymmetry object list: {3}'.format(len(dataset), len(test_dataset), opt.num_points_mesh, opt.sym_list))
 
@@ -139,6 +143,7 @@ def main():
         for rep in range(opt.repeat_epoch):
             for i, data in enumerate(dataloader, 0):
                 points, choose, img, target, model_points, idx = data
+                idx = idx - 1
                 points, choose, img, target, model_points, idx = Variable(points).cuda(), \
                                                                  Variable(choose).cuda(), \
                                                                  Variable(img).cuda(), \
@@ -183,6 +188,7 @@ def main():
 
         for j, data in enumerate(testdataloader, 0):
             points, choose, img, target, model_points, idx = data
+            idx = idx - 1
             points, choose, img, target, model_points, idx = Variable(points).cuda(), \
                                                              Variable(choose).cuda(), \
                                                              Variable(img).cuda(), \
@@ -223,19 +229,29 @@ def main():
             opt.batch_size = int(opt.batch_size / opt.iteration)
             optimizer = optim.Adam(refiner.parameters(), lr=opt.lr)
 
-            if opt.dataset == 'ycb':
-                dataset = PoseDataset_ycb('train', opt.num_points, True, opt.dataset_root, opt.noise_trans, opt.refine_start)
-            elif opt.dataset == 'linemod':
-                dataset = PoseDataset_linemod('train', opt.num_points, True, opt.dataset_root, opt.noise_trans, opt.refine_start)
+            dataset = YCBDataset(opt.dataset_root, mode='train_syn_grid', 
+                                 object_list = object_list, 
+                                 output_data = output_format,
+                                 resample_on_error = True,
+                                 preprocessors = [YCBOcclusionAugmentor(opt.dataset_root), 
+                                                  ColorJitter(), 
+                                                  InplaneRotator()],
+                                 postprocessors = [ImageNormalizer(), PointShifter()],
+                                 refine = opt.refine_start,
+                                 image_size = [640, 480], num_points=1000)
             dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=opt.workers)
-            if opt.dataset == 'ycb':
-                test_dataset = PoseDataset_ycb('test', opt.num_points, False, opt.dataset_root, 0.0, opt.refine_start)
-            elif opt.dataset == 'linemod':
-                test_dataset = PoseDataset_linemod('test', opt.num_points, False, opt.dataset_root, 0.0, opt.refine_start)
-            testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
             
-            opt.sym_list = dataset.get_sym_list()
-            opt.num_points_mesh = dataset.get_num_points_mesh()
+            test_dataset = YCBDataset(opt.dataset_root, mode='valid', 
+                                 object_list = object_list, 
+                                 output_data = output_format,
+                                 resample_on_error = True,
+                                 preprocessors = [],
+                                 postprocessors = [ImageNormalizer()],
+                                 refine = opt.refine_start,
+                                 image_size = [640, 480], num_points=1000)
+            testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
+         
+            opt.num_points_mesh = num_pt_mesh_large
 
             print('>>>>>>>>----------Dataset loaded!---------<<<<<<<<\nlength of the training set: {0}\nlength of the testing set: {1}\nnumber of sample points on mesh: {2}\nsymmetry object list: {3}'.format(len(dataset), len(test_dataset), opt.num_points_mesh, opt.sym_list))
 

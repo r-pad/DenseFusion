@@ -576,3 +576,162 @@ class PoseRefineNet(nn.Module):
         out_tx = torch.index_select(tx[b], 0, obj[b])
 
         return out_rx, out_tx
+
+class PoseNetPlusIsoBing(nn.Module):
+    def __init__(self, num_points, num_obj):
+        super(PoseNetPlusIsoBing, self).__init__()
+        self.num_points = num_points
+        self.cnn = ModifiedResnet()
+        self.feat = PoseNetFeat(num_points)
+       
+        self.conv1_r = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_t = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_c = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_s = torch.nn.Conv1d(1408, 640, 1)
+
+        self.conv2_r = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_t = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_c = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_s = torch.nn.Conv1d(640, 256, 1)
+
+        self.conv3_r = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_t = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_c = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_s = torch.nn.Conv1d(256, 128, 1)
+
+        self.conv4_r = torch.nn.Conv1d(128, num_obj*4, 1) #quaternion
+        self.conv4_t = torch.nn.Conv1d(128, num_obj*3, 1) #translation
+        self.conv4_c = torch.nn.Conv1d(128, num_obj*1, 1) #confidence
+        self.conv4_s = torch.nn.Conv1d(128, num_obj*1, 1) #sigma
+
+        self.num_obj = num_obj
+
+    def forward(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x = self.feat(x, emb)
+
+        rx = F.relu(self.conv1_r(ap_x))
+        tx = F.relu(self.conv1_t(ap_x))
+        cx = F.relu(self.conv1_c(ap_x))      
+        sx = F.relu(self.conv1_s(ap_x))      
+
+        rx = F.relu(self.conv2_r(rx))
+        tx = F.relu(self.conv2_t(tx))
+        cx = F.relu(self.conv2_c(cx))
+        sx = F.relu(self.conv2_s(sx))
+
+        rx = F.relu(self.conv3_r(rx))
+        tx = F.relu(self.conv3_t(tx))
+        cx = F.relu(self.conv3_c(cx))
+        sx = F.relu(self.conv3_s(sx))
+
+        rx = self.conv4_r(rx).view(bs, self.num_obj, 4, self.num_points)
+        tx = self.conv4_t(tx).view(bs, self.num_obj, 3, self.num_points)
+        cx = torch.sigmoid(self.conv4_c(cx)).view(bs, self.num_obj, 1, self.num_points)
+        sx = torch.abs(self.conv4_s(sx)).view(bs, self.num_obj, 1, self.num_points)
+        
+        b = 0
+        out_rx = torch.index_select(rx[b], 0, obj[b])
+        out_tx = torch.index_select(tx[b], 0, obj[b])
+        out_cx = torch.index_select(cx[b], 0, obj[b])
+        out_sx = torch.index_select(sx[b], 0, obj[b])
+        
+        out_rx = out_rx.contiguous().transpose(2, 1).contiguous()
+        out_cx = out_cx.contiguous().transpose(2, 1).contiguous()
+        out_tx = out_tx.contiguous().transpose(2, 1).contiguous()
+        out_sx = out_sx.contiguous().transpose(2, 1).contiguous()
+        
+        return out_rx, out_tx, out_cx, out_sx, emb.detach()
+ 
+class PoseNetPlusDuelBing(nn.Module):
+    def __init__(self, num_points, num_obj):
+        super(PoseNetPlusDuelBing, self).__init__()
+        self.num_points = num_points
+        self.cnn = ModifiedResnet()
+        self.feat = PoseNetFeat(num_points)
+       
+        self.conv1_r = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_t = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_c = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_bq = torch.nn.Conv1d(1408, 640, 1)
+        self.conv1_bz = torch.nn.Conv1d(1408, 640, 1)
+
+        self.conv2_r = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_t = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_c = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_bq = torch.nn.Conv1d(640, 256, 1)
+        self.conv2_bz = torch.nn.Conv1d(640, 256, 1)
+
+        self.conv3_r = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_t = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_c = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_bq = torch.nn.Conv1d(256, 128, 1)
+        self.conv3_bz = torch.nn.Conv1d(256, 128, 1)
+
+        self.conv4_r = torch.nn.Conv1d(128, num_obj*4, 1) #quaternion
+        self.conv4_t = torch.nn.Conv1d(128, num_obj*3, 1) #translation
+        self.conv4_c = torch.nn.Conv1d(128, num_obj*1, 1) #confidence
+        self.conv4_bq = torch.nn.Conv1d(128, num_obj*4, 1) #sigma
+        self.conv4_bz = torch.nn.Conv1d(128, num_obj*3, 1) #sigma
+
+        self.num_obj = num_obj
+
+    def forward(self, img, x, choose, obj):
+        out_img = self.cnn(img)
+        
+        bs, di, _, _ = out_img.size()
+
+        emb = out_img.view(bs, di, -1)
+        choose = choose.repeat(1, di, 1)
+        emb = torch.gather(emb, 2, choose).contiguous()
+        
+        x = x.transpose(2, 1).contiguous()
+        ap_x = self.feat(x, emb)
+
+        rx = F.relu(self.conv1_r(ap_x))
+        tx = F.relu(self.conv1_t(ap_x))
+        cx = F.relu(self.conv1_c(ap_x))      
+        bqx = F.relu(self.conv1_bq(ap_x))      
+        bzx = F.relu(self.conv1_bz(ap_x))      
+
+        rx = F.relu(self.conv2_r(rx))
+        tx = F.relu(self.conv2_t(tx))
+        cx = F.relu(self.conv2_c(cx))
+        bqx = F.relu(self.conv2_bq(bqx))
+        bzx = F.relu(self.conv2_bz(bzx))
+
+        rx = F.relu(self.conv3_r(rx))
+        tx = F.relu(self.conv3_t(tx))
+        cx = F.relu(self.conv3_c(cx))
+        bqx = F.relu(self.conv3_bq(bqx))
+        bzx = F.relu(self.conv3_bz(bzx))
+
+        rx = self.conv4_r(rx).view(bs, self.num_obj, 4, self.num_points)
+        tx = self.conv4_t(tx).view(bs, self.num_obj, 3, self.num_points)
+        cx = torch.sigmoid(self.conv4_c(cx)).view(bs, self.num_obj, 1, self.num_points)
+        bqx = self.conv4_bq(bqx).view(bs, self.num_obj, 4, self.num_points)
+        bzx = torch.abs(self.conv4_bz(bzx)).view(bs, self.num_obj, 3, self.num_points)
+        
+        b = 0
+        out_rx = torch.index_select(rx[b], 0, obj[b])
+        out_tx = torch.index_select(tx[b], 0, obj[b])
+        out_cx = torch.index_select(cx[b], 0, obj[b])
+        out_bqx = torch.index_select(bqx[b], 0, obj[b])
+        out_bzx = torch.index_select(bzx[b], 0, obj[b])
+        
+        out_rx = out_rx.contiguous().transpose(2, 1).contiguous()
+        out_cx = out_cx.contiguous().transpose(2, 1).contiguous()
+        out_tx = out_tx.contiguous().transpose(2, 1).contiguous()
+        out_bqx = out_bqx.contiguous().transpose(2, 1).contiguous()
+        out_bzx = out_bzx.contiguous().transpose(2, 1).contiguous()
+        
+        return out_rx, out_tx, out_cx, out_bqx, out_bzx, emb.detach()
+ 

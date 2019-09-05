@@ -78,7 +78,7 @@ def main():
                      otypes.OBJECT_LABEL,
                      ]
 
-    dataset = YCBDataset(opt.dataset_root, mode='train_syn_grid', 
+    dataset = YCBDataset(opt.dataset_root, mode='train_syn_grid_valid', 
                          object_list = object_list, 
                          output_data = output_format,
                          resample_on_error = True,
@@ -96,7 +96,7 @@ def main():
                          preprocessors = [],
                          postprocessors = [ImageNormalizer()],
                          image_size = [640, 480], num_points=1000)
-    testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=1)
+    testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=1)
     
 
     opt.sym_list = [12, 15, 18, 19, 20]
@@ -145,10 +145,9 @@ def main():
 
                 if train_count % opt.batch_size == 0:
                     cum_batch_count += 1
-                    logger.info('Train time {0} Epoch {1} Batch {2} Frame {3} Avg_dis:{4}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), epoch, int(train_count / opt.batch_size), train_count, train_dis_avg / opt.batch_size))
+                    logger.info('Train time {0} Epoch {1} Batch {2} Frame {3} Avg_dis:{4}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), epoch, int(train_count / opt.batch_size), train_count/len(dataset), train_dis_avg / opt.batch_size))
                     optimizer.step()
                     optimizer.zero_grad()
-                    train_dis_avg = 0
                     if(cum_batch_count % 100 == 0):
                         train_writer.add_scalar('loss', loss, cum_batch_count)
                         train_writer.add_scalar('lik', dis, cum_batch_count)
@@ -157,8 +156,12 @@ def main():
                         train_writer.add_scalar('mean_err', mean_err/(100*opt.batch_size), cum_batch_count)
                         mean_sig = 0
                         mean_err = 0
+                    train_dis_avg = 0
                 if train_count != 0 and train_count % 1000 == 0:
                     torch.save(estimator.state_dict(), '{0}/pose_model_current.pth'.format(opt.outf))
+                
+                if(train_count >= 100000):
+                    break
 
         print('>>>>>>>>----------epoch {0} train finish---------<<<<<<<<'.format(epoch))
 
@@ -188,6 +191,8 @@ def main():
             test_dis += dis.item()
             logger.info('Test time {0} Test Frame No.{1} dis:{2}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), test_count, dis))
         test_count += 1
+        if(test_count >= 3000):
+            break
 
         test_dis = test_dis / test_count
         logger.info('Test time {0} Epoch {1} TEST FINISH Avg dis: {2}'.format(time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - st_time)), epoch, test_dis))
@@ -200,10 +205,7 @@ def main():
         mean_err = 0
         if test_dis <= best_test:
             best_test = test_dis
-            if opt.refine_start:
-                torch.save(refiner.state_dict(), '{0}/pose_refine_model_{1}_{2}.pth'.format(opt.outf, epoch, test_dis))
-            else:
-                torch.save(estimator.state_dict(), '{0}/pose_model_{1}_{2}.pth'.format(opt.outf, epoch, test_dis))
+            torch.save(estimator.state_dict(), '{0}/pose_model_{1}_{2}.pth'.format(opt.outf, epoch, test_dis))
             print(epoch, '>>>>>>>>----------BEST TEST MODEL SAVED---------<<<<<<<<')
 
         if best_test < opt.decay_margin and not opt.decay_start:

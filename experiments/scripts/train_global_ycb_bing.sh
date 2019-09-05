@@ -8,4 +8,4 @@ export PYTHONUNBUFFERED="True"
 
 python3 ./tools/train_global_bing.py \
   --dataset_root ./datasets/ycb/YCB_Video_Dataset \
-#  --resume_posenet pose_model_current.pth
+  --resume_posenet pose_model_current.pth

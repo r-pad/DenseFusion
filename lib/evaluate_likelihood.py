@@ -163,6 +163,7 @@ def subRandomSigmaSearchEvery(estimator, dataset_root, file_list,
             if(v > max_likelihood[k]):
                 max_likelihood[k] = v
                 max_sigma[k] = sigma
+                import IPython; IPython.embed()
                 print("Max Sigma for object {} after {} samples: {} ({})".format(k, j+1, sigma, max_likelihood[k]))
                 np.savez('bingham_every_obj_{}.npz'.format(k), likelihoods = likelihoods[k], sigma = sigma)
 

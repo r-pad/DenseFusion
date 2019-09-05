@@ -99,70 +99,78 @@ def main():
                      otypes.QUATERNION, otypes.IMAGE_CROPPED, 
                      otypes.DEPTH_POINTS_MASKED_AND_INDEXES]
     estimator.eval()
-
-    with std_out_err_redirect_tqdm() as orig_stdout:
-        pbar = tqdm(opt.object_indices, file=orig_stdout, dynamic_ncols=True) 
-        for cls in pbar:
-            preprocessors = []
-            postprocessors = [ImageNormalizer()]
-            if(opt.num_augmentations > 0):
-                preprocessors.extend([YCBOcclusionAugmentor(opt.dataset_root), 
-                                      ColorJitter(),])
-                postprocessors.append(PointShifter())
-            
-            dataset = YCBDataset(opt.dataset_root, mode=opt.dataset_mode,
-                                 object_list = [cls], 
-                                 output_data = output_format,
-                                 resample_on_error = False,
-                                 add_syn_background = opt.add_syn_background,
-                                 add_syn_noise = opt.add_syn_background,
-                                 preprocessors = preprocessors, 
-                                 postprocessors = postprocessors,
-                                 image_size = [640, 480], num_points=1000)
-         
-            classes = dataset.classes
-            dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
-            pbar.set_description('Featurizing {}'.format(classes[cls]))
-            if(opt.num_augmentations > 0):
-                pbar_aug = trange(opt.start_index, opt.num_augmentations, file=orig_stdout, dynamic_ncols=True)
-            else:
-                pbar_aug = [None]
-            for aug_idx in pbar_aug:
-                pbar_save = tqdm(enumerate(dataloader), total = len(dataloader),
-                                 file=orig_stdout, dynamic_ncols=True)
-                for i, data in pbar_save:
-                    if(len(data) == 0 or len(data[0]) == 0):
-                        continue
-                    idx, quat, img, points, choose = data
-                    data_path = dataset.image_list[i]
-                    idx = idx - 1
-                    img = Variable(img).cuda()
-                    points = Variable(points).cuda()
-                    choose = Variable(choose).cuda()
-                    idx = Variable(idx).cuda()
-                    assert cls == data_path[1]
-                    assert cls - 1 == int(idx[0])
-                    pred_r, pred_t, pred_c, emb, feat, feat_global = estimator.allFeatures(img, points, choose, idx)
-                    if(opt.num_augmentations > 0):
-                        output_filename = '{0}/data/{1}_{2}_{3}_feat.npz'.format(opt.output_folder, 
-                                data_path[0], classes[cls], aug_idx)
-                    else:
-                        output_filename = '{0}/data/{1}_{2}_feat.npz'.format(opt.output_folder, 
-                                data_path[0], classes[cls])
-                    #pbar_save.set_description(output_filename)
-                    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
-                    how_max, which_max = torch.max(pred_c, 1)
-                    max_feat = feat[0,:,which_max[0]].view(-1)
-
-                    np.savez(output_filename, 
-                             quat = to_np(quat)[0], 
-                             feat = to_np(max_feat),
-                             #feat_all = to_np(feat)[0].T, i
-                             feat_global = to_np(feat_global)[0], 
-                             #max_confidence = to_np(how_max),
-                             #confidence = to_np(pred_c)[0],
-                             )
-                    
-               
+    with torch.no_grad():
+        with std_out_err_redirect_tqdm() as orig_stdout:
+            pbar = tqdm(opt.object_indices, file=orig_stdout, dynamic_ncols=True) 
+            for cls in pbar:
+                preprocessors = []
+                postprocessors = [ImageNormalizer()]
+                if(opt.num_augmentations > 0):
+                    preprocessors.extend([YCBOcclusionAugmentor(opt.dataset_root), 
+                                          ColorJitter(),])
+                    postprocessors.append(PointShifter())
+                
+                dataset = YCBDataset(opt.dataset_root, mode=opt.dataset_mode,
+                                     object_list = [cls], 
+                                     output_data = output_format,
+                                     resample_on_error = False,
+                                     add_syn_background = opt.add_syn_background,
+                                     add_syn_noise = opt.add_syn_background,
+                                     preprocessors = preprocessors, 
+                                     postprocessors = postprocessors,
+                                     image_size = [640, 480], num_points=1000)
+             
+                classes = dataset.classes
+                dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
+                pbar.set_description('Featurizing {}'.format(classes[cls]))
+                if(opt.num_augmentations > 0):
+                    pbar_aug = trange(opt.start_index, opt.num_augmentations, file=orig_stdout, dynamic_ncols=True)
+                else:
+                    pbar_aug = [None]
+                for aug_idx in pbar_aug:
+                    pbar_save = tqdm(enumerate(dataloader), total = len(dataloader),
+                                     file=orig_stdout, dynamic_ncols=True)
+                    for i, data in pbar_save:
+                        if(len(data) == 0 or len(data[0]) == 0):
+                            continue
+                        idx, quat, img, points, choose = data
+                        data_path = dataset.image_list[i]
+                        idx = idx - 1
+                        img = Variable(img).cuda()
+                        points = Variable(points).cuda()
+                        choose = Variable(choose).cuda()
+                        idx = Variable(idx).cuda()
+                        assert cls == data_path[1]
+                        assert cls - 1 == int(idx[0])
+                        pred_r, pred_t, pred_c, emb, feat, feat_global = estimator.allFeatures(img, points, choose, idx)
+                        if(opt.num_augmentations > 0):
+                            output_filename = '{0}/data/{1}_{2}_{3}_feat.npz'.format(opt.output_folder, 
+                                    data_path[0], classes[cls], aug_idx)
+                        else:
+                            output_filename = '{0}/data/{1}_{2}_feat.npz'.format(opt.output_folder, 
+                                    data_path[0], classes[cls])
+                        #pbar_save.set_description(output_filename)
+                        os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+                        how_max, which_max = torch.max(pred_c, 1)
+                        max_feat = feat[0,:,which_max[0]].view(-1)
+                        pred_t = pred_t[0,:]
+                        pred_q = pred_r[0,:,[1,2,3,0]]
+                        pred_q /= torch.norm(pred_q, dim=1).view(-1,1)
+                        np.savez(output_filename, 
+                                 max_c = to_np(how_max),
+                                 max_q = to_np(pred_q[which_max.item()]),
+                                 max_t = to_np(pred_t[which_max.item()]),
+                                 pred_c = to_np(pred_c),
+                                 pred_q = to_np(pred_q),
+                                 pred_t = to_np(pred_t),
+                                 quat = to_np(quat)[0], 
+                                 feat = to_np(max_feat),
+                                 #feat_all = to_np(feat)[0].T, i
+                                 feat_global = to_np(feat_global)[0], 
+                                 #max_confidence = to_np(how_max),
+                                 #confidence = to_np(pred_c)[0],
+                                 )
+                        
+                   
 if __name__ == '__main__':
     main()

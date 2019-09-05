@@ -23,7 +23,7 @@ from torch.autograd import Variable
 
 from object_pose_utils.datasets.pose_dataset import OutputTypes as otypes
 from object_pose_utils.datasets.ycb_dataset import YcbDataset as YCBDataset
-from object_pose_utils.datasets.ycb_dataset import YcbImagePreprocessor
+from object_pose_utils.datasets.image_processing import ImageNormalizer
 from object_pose_utils.utils import to_np
 
 from lib.network import PoseNetGlobal
@@ -58,7 +58,7 @@ def main():
     for cls in trange(1,num_objects+1):
         dataset = YCBDataset(opt.dataset_root, mode = opt.mode, object_list = [cls], 
                              output_data = output_format,
-                             preprocessor = YcbImagePreprocessor,
+                             postprocessor = ImageNormalizer,
                              image_size = [640, 480], num_points = 1000)
         classes = dataset.classes
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=opt.workers)

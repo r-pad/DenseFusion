@@ -22,7 +22,7 @@ import torchvision.utils as vutils
 from torch.autograd import Variable
 from datasets.ycb.dataset import PoseDataset as PoseDataset_ycb
 from datasets.linemod.dataset import PoseDataset as PoseDataset_linemod
-from lib.network import PoseNet, PoseRefineNet
+from lib.network import PoseNetDropout, PoseRefineNet
 from lib.loss import Loss
 from lib.loss_refiner import Loss_refine
 from lib.utils import setup_logger
@@ -68,7 +68,7 @@ def main():
         print('Unknown dataset')
         return
 
-    estimator = PoseNet(num_points = opt.num_points, num_obj = opt.num_objects)
+    estimator = PoseNetDropout(num_points = opt.num_points, num_obj = opt.num_objects)
     estimator.cuda()
     refiner = PoseRefineNet(num_points = opt.num_points, num_obj = opt.num_objects)
     refiner.cuda()
@@ -90,12 +90,12 @@ def main():
         optimizer = optim.Adam(estimator.parameters(), lr=opt.lr)
 
     if opt.dataset == 'ycb':
-        dataset = PoseDataset_ycb('train', opt.num_points, True, opt.dataset_root, opt.noise_trans, opt.refine_start)
+        dataset = PoseDataset_ycb('orig_train', opt.num_points, True, opt.dataset_root, opt.noise_trans, opt.refine_start)
     elif opt.dataset == 'linemod':
         dataset = PoseDataset_linemod('train', opt.num_points, True, opt.dataset_root, opt.noise_trans, opt.refine_start)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=opt.workers)
     if opt.dataset == 'ycb':
-        test_dataset = PoseDataset_ycb('test', opt.num_points, False, opt.dataset_root, 0.0, opt.refine_start)
+        test_dataset = PoseDataset_ycb('orig_test', opt.num_points, False, opt.dataset_root, 0.0, opt.refine_start)
     elif opt.dataset == 'linemod':
         test_dataset = PoseDataset_linemod('test', opt.num_points, False, opt.dataset_root, 0.0, opt.refine_start)
     testdataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=opt.workers)
